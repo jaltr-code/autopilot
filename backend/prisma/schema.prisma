@@ -1,0 +1,239 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleName {
+  STAFF
+  TEAM_LEAD
+  MANAGER
+  ADMIN
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  LOGIN
+  LOGOUT
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  teams         Team[]
+  roles         Role[]
+  shiftTypes    ShiftType[]
+  leaveTypes    LeaveType[]
+  shifts        Shift[]
+  leaveRequests LeaveRequest[]
+  auditLogs     AuditLog[]
+  teamManagers  TeamManager[]
+}
+
+model Role {
+  id        String   @id @default(cuid())
+  companyId String
+  name      RoleName
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users   User[]
+
+  @@unique([companyId, name]) // each company has one of each role by default
+  @@index([companyId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  companyId    String
+  roleId       String
+  teamId       String? // staff/team leads belong to a team; managers can be null if org-wide
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id])
+  team    Team?   @relation("TeamMembers", fields: [teamId], references: [id])
+
+  // A manager can manage multiple teams via this join table:
+  managedTeams TeamManager[]
+
+  shifts        Shift[]
+  leaveRequests LeaveRequest[] @relation("LeaveRequester")
+
+  approvals LeaveRequest[] @relation("LeaveApprover")
+
+  auditLogs AuditLog[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@index([companyId, roleId])
+  @@index([companyId, teamId])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  members  User[]        @relation("TeamMembers")
+  managers TeamManager[]
+
+  shifts        Shift[]
+  leaveRequests LeaveRequest[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model TeamManager {
+  id        String   @id @default(cuid())
+  companyId String
+  teamId    String
+  userId    String // manager user
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, teamId, userId])
+  @@index([companyId, userId])
+  @@index([companyId, teamId])
+}
+
+model ShiftType {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String // Morning, Afternoon, Night, etc.
+  startTime String // "08:00" (store as string for simplicity; can change to minutes/int later)
+  endTime   String // "16:00"
+  color     String? // optional hex like "#3B82F6"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shifts  Shift[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Shift {
+  id          String      @id @default(cuid())
+  companyId   String
+  teamId      String?
+  userId      String
+  shiftTypeId String
+  date        DateTime // store date (00:00 time); UI treats as day
+  status      ShiftStatus @default(SCHEDULED)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  shiftType ShiftType @relation(fields: [shiftTypeId], references: [id])
+
+  @@unique([companyId, userId, date]) // prevents double-booking same person same day (adjust if you want split shifts)
+  @@index([companyId])
+  @@index([companyId, userId, date])
+  @@index([companyId, teamId, date])
+}
+
+model LeaveType {
+  id           String   @id @default(cuid())
+  companyId    String
+  name         String // Annual, Sick, Unpaid, etc.
+  requiresNote Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requests LeaveRequest[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model LeaveRequest {
+  id           String      @id @default(cuid())
+  companyId    String
+  teamId       String?
+  requesterId  String
+  leaveTypeId  String
+  startDate    DateTime
+  endDate      DateTime
+  status       LeaveStatus @default(PENDING)
+  note         String?
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  requester  User  @relation("LeaveRequester", fields: [requesterId], references: [id])
+  approvedBy User? @relation("LeaveApprover", fields: [approvedById], references: [id])
+
+  @@index([companyId])
+  @@index([companyId, requesterId])
+  @@index([companyId, teamId])
+  @@index([companyId, status])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  companyId String
+  userId    String?
+  action    AuditAction
+  entity    String // e.g. "LeaveRequest", "Shift", "User"
+  entityId  String?
+  details   Json?
+  createdAt DateTime    @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, userId])
+  @@index([companyId, entity, entityId])
+}
