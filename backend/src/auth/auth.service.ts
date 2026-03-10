@@ -78,7 +78,12 @@ export class AuthService {
       return { company, user };
     });
 
-    const token = await this.signToken(result.user.id, result.user.email, result.user.companyId);
+    const token = await this.signToken(
+    result.user.id,
+    result.user.email,
+    result.user.companyId,
+    result.user.role.name,
+    );
 
     return {
       message: 'Signup successful',
@@ -107,7 +112,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const token = await this.signToken(user.id, user.email, user.companyId);
+    const token = await this.signToken(
+    user.id,
+    user.email,
+    user.companyId,
+    user.role.name,
+    );
 
     return {
       message: 'Login successful',
@@ -147,12 +157,18 @@ export class AuthService {
       role: user.role.name,
     };
   }
-
-  private async signToken(userId: string, email: string, companyId: string) {
-    return this.jwtService.signAsync({
-      sub: userId,
-      email,
-      companyId,
-    });
-  }
+  
+  private async signToken(
+  userId: string,
+  email: string,
+  companyId: string,
+  role: string,
+) {
+  return this.jwtService.signAsync({
+    sub: userId,
+    email,
+    companyId,
+    role,
+  });
+}
 }

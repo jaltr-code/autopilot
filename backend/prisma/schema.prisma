@@ -1,7 +1,7 @@
 // prisma/schema.prisma
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
   moduleFormat = "cjs"
 }
 
@@ -54,6 +54,7 @@ model Company {
   leaveRequests LeaveRequest[]
   auditLogs     AuditLog[]
   teamManagers  TeamManager[]
+  userTeams     UserTeam[]
 }
 
 model Role {
@@ -73,7 +74,6 @@ model User {
   id           String   @id @default(cuid())
   companyId    String
   roleId       String
-  teamId       String? // staff/team leads belong to a team; managers can be null if org-wide
   email        String
   passwordHash String
   firstName    String
@@ -84,10 +84,10 @@ model User {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   role    Role    @relation(fields: [roleId], references: [id])
-  team    Team?   @relation("TeamMembers", fields: [teamId], references: [id])
 
   // A manager can manage multiple teams via this join table:
   managedTeams TeamManager[]
+  userTeams    UserTeam[]
 
   shifts        Shift[]
   leaveRequests LeaveRequest[] @relation("LeaveRequester")
@@ -99,7 +99,6 @@ model User {
   @@unique([companyId, email])
   @@index([companyId])
   @@index([companyId, roleId])
-  @@index([companyId, teamId])
 }
 
 model Team {
@@ -111,14 +110,31 @@ model Team {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  members  User[]        @relation("TeamMembers")
-  managers TeamManager[]
+  userTeams UserTeam[]
+  managers  TeamManager[]
 
   shifts        Shift[]
   leaveRequests LeaveRequest[]
 
   @@unique([companyId, name])
   @@index([companyId])
+}
+
+model UserTeam {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  teamId    String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, teamId])
+  @@index([companyId])
+  @@index([companyId, userId])
+  @@index([companyId, teamId])
 }
 
 model TeamManager {
