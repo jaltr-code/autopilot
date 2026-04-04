@@ -6,9 +6,13 @@ import { AuthModule } from './auth/auth.module';
 import { TeamsModule } from './teams/teams.module';
 import { UsersModule } from './users/users.module';
 import { ShiftTypesModule } from './shift-types/shift-types.module';
+import { ShiftsModule } from './shifts/shifts.module';
+import { ShiftPatternsModule } from './shift-patterns/shift-patterns.module';
+import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
+import { LeaveTypesModule } from './leave-types/leave-types.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TeamsModule, UsersModule, ShiftTypesModule],
+  imports: [PrismaModule, AuthModule, TeamsModule, UsersModule, ShiftTypesModule, ShiftsModule, ShiftPatternsModule, LeaveRequestsModule, LeaveTypesModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -254,42 +254,83 @@ export class TeamsService {
     });
   }
 
-    async removeUserFromTeam(
-    companyId: string,
-    currentUserId: string,
-    currentUserRole: string,
-    teamId: string,
-    userId: string,
-  ) {
-    await this.assertCanManageTeam(
-      companyId,
-      currentUserId,
-      currentUserRole,
-      teamId,
-    );
-
-    const membership = await this.prisma.userTeam.findFirst({
-      where: {
+  async removeUserFromTeam(
+      companyId: string,
+      currentUserId: string,
+      currentUserRole: string,
+      teamId: string,
+      userId: string,
+    ) {
+      await this.assertCanManageTeam(
         companyId,
+        currentUserId,
+        currentUserRole,
         teamId,
-        userId,
-      },
-    });
+      );
 
-    if (!membership) {
-      throw new NotFoundException('User is not in this team');
+      const membership = await this.prisma.userTeam.findFirst({
+        where: {
+          companyId,
+          teamId,
+          userId,
+        },
+      });
+
+      if (!membership) {
+        throw new NotFoundException('User is not in this team');
+      }
+
+      const now = new Date();
+
+      const futureGeneratedTeamShifts = await this.prisma.shift.findMany({
+        where: {
+          companyId,
+          teamId,
+          userId,
+          startDateTime: {
+            gte: now,
+          },
+          sourcePatternId: {
+            not: null,
+          },
+        },
+        include: {
+          sourcePattern: true,
+          shiftType: true,
+          team: true,
+        },
+      });
+
+      const removableShiftIds = futureGeneratedTeamShifts
+        .filter(
+          (shift) =>
+            shift.sourcePattern &&
+            shift.sourcePattern.targetType === 'TEAM' &&
+            shift.sourcePattern.teamId === teamId,
+        )
+        .map((shift) => shift.id);
+
+      if (removableShiftIds.length > 0) {
+        await this.prisma.shift.deleteMany({
+          where: {
+            id: {
+              in: removableShiftIds,
+            },
+          },
+        });
+      }
+
+      await this.prisma.userTeam.delete({
+        where: {
+          id: membership.id,
+        },
+      });
+
+      return {
+        message: 'User removed from team successfully',
+        removedFutureGeneratedShiftCount: removableShiftIds.length,
+      };
     }
-
-    await this.prisma.userTeam.delete({
-      where: {
-        id: membership.id,
-      },
-    });
-
-    return {
-      message: 'User removed from team successfully',
-    };
-  }
 
     async findUsersInTeam(
     companyId: string,

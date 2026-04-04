@@ -38,6 +38,18 @@ enum AuditAction {
   LOGOUT
 }
 
+enum ShiftTargetType {
+  USER
+  TEAM
+}
+
+enum RecurrenceType {
+  NONE
+  DAILY
+  WEEKLY
+  EVERY_N_WEEKS
+}
+
 model Company {
   id        String   @id @default(cuid())
   name      String
@@ -51,6 +63,7 @@ model Company {
   shiftTypes    ShiftType[]
   leaveTypes    LeaveType[]
   shifts        Shift[]
+  shiftPatterns ShiftPattern[]
   leaveRequests LeaveRequest[]
   auditLogs     AuditLog[]
   teamManagers  TeamManager[]
@@ -92,6 +105,8 @@ model User {
   shifts        Shift[]
   leaveRequests LeaveRequest[] @relation("LeaveRequester")
 
+  shiftPatterns ShiftPattern[]
+
   approvals LeaveRequest[] @relation("LeaveApprover")
 
   auditLogs AuditLog[]
@@ -114,6 +129,7 @@ model Team {
   managers  TeamManager[]
 
   shifts        Shift[]
+  shiftPatterns ShiftPattern[]
   leaveRequests LeaveRequest[]
 
   @@unique([companyId, name])
@@ -163,34 +179,70 @@ model ShiftType {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  shifts  Shift[]
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shifts        Shift[]
+  shiftPatterns ShiftPattern[]
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
 model Shift {
-  id          String      @id @default(cuid())
-  companyId   String
-  teamId      String?
-  userId      String
-  shiftTypeId String
-  date        DateTime // store date (00:00 time); UI treats as day
-  status      ShiftStatus @default(SCHEDULED)
-  notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  companyId       String
+  teamId          String?
+  userId          String
+  shiftTypeId     String
+  sourcePatternId String?
+  date            DateTime
+  startDateTime   DateTime
+  endDateTime     DateTime
+  status          ShiftStatus @default(SCHEDULED)
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  team      Team?     @relation(fields: [teamId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
-  shiftType ShiftType @relation(fields: [shiftTypeId], references: [id])
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  team          Team?         @relation(fields: [teamId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  shiftType     ShiftType     @relation(fields: [shiftTypeId], references: [id])
+  sourcePattern ShiftPattern? @relation(fields: [sourcePatternId], references: [id])
 
-  @@unique([companyId, userId, date]) // prevents double-booking same person same day (adjust if you want split shifts)
   @@index([companyId])
   @@index([companyId, userId, date])
   @@index([companyId, teamId, date])
+  @@index([companyId, sourcePatternId])
+  @@index([companyId, userId, startDateTime])
+  @@index([companyId, userId, endDateTime])
+}
+
+model ShiftPattern {
+  id             String          @id @default(cuid())
+  companyId      String
+  targetType     ShiftTargetType
+  userId         String?
+  teamId         String?
+  shiftTypeId    String
+  startDate      DateTime
+  endDate        DateTime?
+  recurrenceType RecurrenceType  @default(NONE)
+  interval       Int?
+  daysOfWeek     String[]        @default([])
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  shiftType ShiftType @relation(fields: [shiftTypeId], references: [id], onDelete: Cascade)
+
+  shifts Shift[]
+
+  @@index([companyId])
+  @@index([companyId, userId])
+  @@index([companyId, teamId])
+  @@index([companyId, shiftTypeId])
 }
 
 model LeaveType {
