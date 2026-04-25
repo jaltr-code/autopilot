@@ -29,6 +29,17 @@ export class ShiftsController {
     );
   }
 
+  @Get('user/:userId')
+  @Roles('ADMIN', 'MANAGER', 'TEAM_LEAD', 'STAFF')
+  findUserShifts(@Param('userId') userId: string, @Req() req: any) {
+  return this.shiftsService.findUserShifts(
+    req.user.companyId,
+    req.user.sub,
+    req.user.role,
+    userId,
+  );
+}
+
   @Get('team/:teamId')
   @Roles('ADMIN', 'MANAGER', 'TEAM_LEAD')
   findTeamShifts(@Param('teamId') teamId: string, @Req() req: any) {

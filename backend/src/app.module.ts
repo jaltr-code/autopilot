@@ -10,9 +10,10 @@ import { ShiftsModule } from './shifts/shifts.module';
 import { ShiftPatternsModule } from './shift-patterns/shift-patterns.module';
 import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
 import { LeaveTypesModule } from './leave-types/leave-types.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TeamsModule, UsersModule, ShiftTypesModule, ShiftsModule, ShiftPatternsModule, LeaveRequestsModule, LeaveTypesModule],
+  imports: [PrismaModule, AuthModule, TeamsModule, UsersModule, ShiftTypesModule, ShiftsModule, ShiftPatternsModule, LeaveRequestsModule, LeaveTypesModule, CalendarModule],
   controllers: [AppController],
   providers: [AppService],
 })

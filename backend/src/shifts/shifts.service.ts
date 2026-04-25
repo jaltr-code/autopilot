@@ -30,6 +30,71 @@ export class ShiftsService {
     };
   }
 
+    async findUserShifts(
+    companyId: string,
+    currentUserId: string,
+    currentUserRole: string,
+    targetUserId: string,
+  ) {
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: targetUserId,
+        companyId,
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (currentUserRole === 'STAFF' && currentUserId !== targetUserId) {
+      throw new ForbiddenException('You do not have permission to view this user’s shifts');
+    }
+
+    if (currentUserRole === 'TEAM_LEAD') {
+      const managedTeams = await this.prisma.teamManager.findMany({
+        where: {
+          companyId,
+          userId: currentUserId,
+        },
+        select: {
+          teamId: true,
+        },
+      });
+
+      const teamIds = managedTeams.map((team) => team.teamId);
+
+      const requesterMembership = await this.prisma.userTeam.findFirst({
+        where: {
+          companyId,
+          userId: targetUserId,
+          teamId: { in: teamIds },
+        },
+      });
+
+      if (!requesterMembership) {
+        throw new ForbiddenException('You do not have permission to view this user’s shifts');
+      }
+    }
+
+    return this.prisma.shift.findMany({
+      where: {
+        companyId,
+        userId: targetUserId,
+      },
+      include: {
+        team: true,
+        shiftType: true,
+      },
+      orderBy: {
+        startDateTime: 'asc',
+      },
+    });
+  }
+
   private timeRangesOverlap(
     startA: Date,
     endA: Date,
