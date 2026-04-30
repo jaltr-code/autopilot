@@ -25,10 +25,14 @@ export class ShiftPatternsController {
 
   @Post()
   create(@Body() data: CreateShiftPatternDto, @Req() req: any) {
-    return this.shiftPatternsService.create(req.user.companyId, data);
+    return this.shiftPatternsService.create(
+      req.user.companyId,
+      data,
+      req.user.sub,
+    );
   }
 
-    @Post(':id/generate')
+  @Post(':id/generate')
   generate(
     @Param('id') id: string,
     @Body() data: GenerateShiftPatternDto,
@@ -36,6 +40,7 @@ export class ShiftPatternsController {
   ) {
     return this.shiftPatternsService.generate(
       req.user.companyId,
+      req.user.sub,
       id,
       data.daysAhead ?? 30,
     );
@@ -52,11 +57,20 @@ export class ShiftPatternsController {
     @Body() data: UpdateShiftPatternDto,
     @Req() req: any,
   ) {
-    return this.shiftPatternsService.update(req.user.companyId, id, data);
+    return this.shiftPatternsService.update(
+      req.user.companyId,
+      req.user.sub,
+      id,
+      data,
+    );
   }
 
   @Delete(':id')
   remove(@Param('id') id: string, @Req() req: any) {
-    return this.shiftPatternsService.remove(req.user.companyId, id);
+    return this.shiftPatternsService.remove(
+      req.user.companyId,
+      req.user.sub,
+      id,
+    );
   }
 }

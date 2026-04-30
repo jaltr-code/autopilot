@@ -86,6 +86,7 @@ export class TeamsController {
   ) {
     return this.teamsService.assignLeadToTeam(
       req.user.companyId,
+      req.user.sub,
       teamId,
       userId,
     );
@@ -100,6 +101,7 @@ export class TeamsController {
   ) {
     return this.teamsService.removeLeadFromTeam(
       req.user.companyId,
+      req.user.sub,
       teamId,
       userId,
     );

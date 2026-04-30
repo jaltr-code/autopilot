@@ -7,10 +7,62 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LeavePolicy } from '../auth/policies/leave.policy';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class LeaveRequestsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService
+    , private auditService: AuditService
+  ) {}
+
+    async create(companyId: string, requesterId: string, data: CreateLeaveRequestDto) {
+      const leaveType = await this.prisma.leaveType.findFirst({
+        where: {
+          id: data.leaveTypeId,
+          companyId,
+        },
+      });
+
+      if (!leaveType) {
+        throw new NotFoundException('Leave type not found');
+      }
+
+      const startDate = new Date(data.startDate);
+      const endDate = new Date(data.endDate);
+
+      if (endDate < startDate) {
+        throw new BadRequestException('endDate must be on or after startDate');
+      }
+
+      const leaveRequest = await this.prisma.leaveRequest.create({
+        data: {
+          companyId,
+          requesterId,
+          leaveTypeId: data.leaveTypeId,
+          startDate,
+          endDate,
+          note: data.note,
+        },
+        include: {
+          leaveType: true,
+        },
+      });
+
+      await this.auditService.log({
+        companyId,
+        userId: requesterId,
+        action: 'LEAVE_REQUEST_CREATED',
+        entityType: 'LeaveRequest',
+        entityId: leaveRequest.id,
+        metadata: {
+          leaveTypeId: data.leaveTypeId,
+          startDate,
+          endDate,
+        },
+      });
+
+      return leaveRequest;
+    }
 
     async remove(
     companyId: string,
@@ -42,44 +94,25 @@ export class LeaveRequestsService {
         },
         });
 
+        await this.auditService.log({
+          companyId,
+          userId: currentUserId,
+          action: 'LEAVE_REQUEST_DELETED',
+          entityType: 'LeaveRequest',
+          entityId: leaveRequestId,
+          metadata: {
+            status: leaveRequest.status,
+            startDate: leaveRequest.startDate,
+            endDate: leaveRequest.endDate,
+          },
+        });
+
         return {
         message: 'Leave request deleted successfully',
         };
     }
 
-  async create(companyId: string, requesterId: string, data: CreateLeaveRequestDto) {
-    const leaveType = await this.prisma.leaveType.findFirst({
-      where: {
-        id: data.leaveTypeId,
-        companyId,
-      },
-    });
 
-    if (!leaveType) {
-      throw new NotFoundException('Leave type not found');
-    }
-
-    const startDate = new Date(data.startDate);
-    const endDate = new Date(data.endDate);
-
-    if (endDate < startDate) {
-      throw new BadRequestException('endDate must be on or after startDate');
-    }
-
-    return this.prisma.leaveRequest.create({
-      data: {
-        companyId,
-        requesterId,
-        leaveTypeId: data.leaveTypeId,
-        startDate,
-        endDate,
-        note: data.note,
-      },
-      include: {
-        leaveType: true,
-      },
-    });
-  }
 
   async findMy(companyId: string, requesterId: string) {
     return this.prisma.leaveRequest.findMany({
@@ -268,6 +301,19 @@ export class LeaveRequestsService {
             role: true,
           },
         },
+      },
+    });
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'LEAVE_REQUEST_UPDATED',
+      entityType: 'LeaveRequest',
+      entityId: leaveRequestId,
+      metadata: {
+        oldStatus: leaveRequest.status,
+        newStatus: status,
+        note,
       },
     });
 

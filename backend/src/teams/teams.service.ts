@@ -2,12 +2,15 @@ import { TeamPolicy } from '../auth/policies/team.policy';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class TeamsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService
+    , private auditService: AuditService
+  ) {}
 
-    async assignLeadToTeam(companyId: string, teamId: string, userId: string) {
+    async assignLeadToTeam(companyId: string, currentUserId: string, teamId: string, userId: string) {
     const team = await this.prisma.team.findFirst({
       where: {
         id: teamId,
@@ -49,6 +52,18 @@ export class TeamsService {
       throw new BadRequestException('User is already assigned as a lead for this team');
     }
 
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId, // who performed the action
+      action: 'USER_ADDED_TO_TEAM', // or better: TEAM_LEAD_ASSIGNED (see below)
+      entityType: 'Team',
+      entityId: teamId,
+      metadata: {
+        assignedUserId: userId,
+        role: 'TEAM_LEAD',
+      },
+    });
+
     return this.prisma.teamManager.create({
       data: {
         companyId,
@@ -66,7 +81,7 @@ export class TeamsService {
     });
   }
 
-  async removeLeadFromTeam(companyId: string, teamId: string, userId: string) {
+  async removeLeadFromTeam(companyId: string, currentUserId: string, teamId: string, userId: string) {
     const assignment = await this.prisma.teamManager.findFirst({
       where: {
         companyId,
@@ -82,6 +97,18 @@ export class TeamsService {
     await this.prisma.teamManager.delete({
       where: {
         id: assignment.id,
+      },
+    });
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'USER_REMOVED_FROM_TEAM', // or TEAM_LEAD_REMOVED
+      entityType: 'Team',
+      entityId: teamId,
+      metadata: {
+        removedUserId: userId,
+        role: 'TEAM_LEAD',
       },
     });
 
@@ -236,6 +263,17 @@ export class TeamsService {
     if (existingMembership) {
       throw new BadRequestException('User is already in this team');
     }
+    
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'USER_ADDED_TO_TEAM',
+      entityType: 'Team',
+      entityId: teamId,
+      metadata: {
+        addedUserId: userId,
+      },
+    });
 
     return this.prisma.userTeam.create({
       data: {
@@ -323,6 +361,18 @@ export class TeamsService {
       await this.prisma.userTeam.delete({
         where: {
           id: membership.id,
+        },
+      });
+
+      await this.auditService.log({
+        companyId,
+        userId: currentUserId,
+        action: 'USER_REMOVED_FROM_TEAM',
+        entityType: 'Team',
+        entityId: teamId,
+        metadata: {
+          removedUserId: userId,
+          removedFutureGeneratedShiftCount: removableShiftIds.length,
         },
       });
 

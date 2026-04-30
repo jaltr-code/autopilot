@@ -5,13 +5,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ForbiddenException } from '@nestjs/common';
 import { UserPolicy } from '../auth/policies/user.policy';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService
+    , private auditService: AuditService
+  ) {}
 
     async updateRole(
     companyId: string,
+    currentUserId: string,
     targetUserId: string,
     newRoleName: string,
   ) {
@@ -56,6 +60,18 @@ export class UsersService {
       },
       data: {
         roleId: newRole.id,
+      },
+    });
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'USER_ROLE_UPDATED',
+      entityType: 'User',
+      entityId: user.id,
+      metadata: {
+        oldRole: oldRoleName,
+        newRole: newRoleName,
       },
     });
 

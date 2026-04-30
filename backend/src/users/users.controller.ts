@@ -47,6 +47,7 @@ export class UsersController {
   ) {
     return this.usersService.updateRole(
       req.user.companyId,
+      req.user.sub,
       userId,
       data.role,
     );

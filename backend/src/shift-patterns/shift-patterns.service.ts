@@ -6,10 +6,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateShiftPatternDto } from './dto/create-shift-pattern.dto';
 import { UpdateShiftPatternDto } from './dto/update-shift-pattern.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class ShiftPatternsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService
+    , private auditService: AuditService
+  ) {}
 
   private validateTargetFields(targetType: string, userId?: string, teamId?: string) {
     if (targetType === 'USER') {
@@ -136,7 +139,7 @@ export class ShiftPatternsService {
     return dates;
   }
 
-    async generate(companyId: string, patternId: string, daysAhead: number) {
+    async generate(companyId: string, currentUserId: string, patternId: string, daysAhead: number) {
     const pattern = await this.prisma.shiftPattern.findFirst({
       where: {
         id: patternId,
@@ -169,7 +172,7 @@ export class ShiftPatternsService {
       : windowEnd;
 
     if (effectiveStart > effectiveEnd) {
-      return {
+      const result = {
         message: 'No shifts to generate for the selected window',
         createdCount: 0,
         patternConflictCount: 0,
@@ -182,6 +185,24 @@ export class ShiftPatternsService {
           leaveConflicts: [],
         },
       };
+
+      await this.auditService.log({
+        companyId,
+        userId: currentUserId,
+        action: 'SHIFT_PATTERN_GENERATED',
+        entityType: 'ShiftPattern',
+        entityId: patternId,
+        metadata: {
+          daysAhead,
+          createdCount: 0,
+          patternConflictCount: 0,
+          manualExclusionCount: 0,
+          leaveConflictCount: 0,
+          note: 'No shifts generated for selected window',
+        },
+      });
+
+      return result;
     }
 
     const occurrenceDates = this.getOccurrenceDates(
@@ -334,7 +355,7 @@ export class ShiftPatternsService {
       }
     }
 
-    return {
+    const result = {
       message: 'Shift generation completed',
       createdCount: created.length,
       patternConflictCount: patternConflicts.length,
@@ -347,6 +368,23 @@ export class ShiftPatternsService {
         leaveConflicts,
       },
     };
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'SHIFT_PATTERN_GENERATED',
+      entityType: 'ShiftPattern',
+      entityId: patternId,
+      metadata: {
+        daysAhead,
+        createdCount: result.createdCount,
+        patternConflictCount: result.patternConflictCount,
+        manualExclusionCount: result.manualExclusionCount,
+        leaveConflictCount: result.leaveConflictCount,
+      },
+    });
+
+    return result;
   }
 
   private validateRecurrence(
@@ -366,7 +404,7 @@ export class ShiftPatternsService {
     }
   }
 
-  async create(companyId: string, data: CreateShiftPatternDto) {
+  async create(companyId: string, data: CreateShiftPatternDto, currentUserId: string) {
     this.validateTargetFields(data.targetType, data.userId, data.teamId);
     this.validateRecurrence(data.recurrenceType, data.interval, data.daysOfWeek);
 
@@ -407,7 +445,7 @@ export class ShiftPatternsService {
       }
     }
 
-    return this.prisma.shiftPattern.create({
+    const pattern = await this.prisma.shiftPattern.create({
       data: {
         companyId,
         targetType: data.targetType as any,
@@ -427,6 +465,26 @@ export class ShiftPatternsService {
         shiftType: true,
       },
     });
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'SHIFT_PATTERN_CREATED',
+      entityType: 'ShiftPattern',
+      entityId: pattern.id,
+      metadata: {
+        targetType: pattern.targetType,
+        userId: pattern.userId,
+        teamId: pattern.teamId,
+        shiftTypeId: pattern.shiftTypeId,
+        recurrenceType: pattern.recurrenceType,
+        startDate: pattern.startDate,
+        endDate: pattern.endDate,
+      },
+    });
+
+    return pattern;
+
   }
 
   async findAll(companyId: string) {
@@ -445,7 +503,7 @@ export class ShiftPatternsService {
     });
   }
 
-  async update(companyId: string, patternId: string, data: UpdateShiftPatternDto) {
+  async update(companyId: string, currentUserId: string, patternId: string, data: UpdateShiftPatternDto) {
     const existing = await this.prisma.shiftPattern.findFirst({
       where: {
         id: patternId,
@@ -507,7 +565,7 @@ export class ShiftPatternsService {
       }
     }
 
-    return this.prisma.shiftPattern.update({
+    const updatedPattern = await this.prisma.shiftPattern.update({
       where: {
         id: patternId,
       },
@@ -533,9 +591,48 @@ export class ShiftPatternsService {
         shiftType: true,
       },
     });
+    
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'SHIFT_PATTERN_UPDATED',
+      entityType: 'ShiftPattern',
+      entityId: updatedPattern.id,
+      metadata: {
+        before: {
+          targetType: existing.targetType,
+          userId: existing.userId,
+          teamId: existing.teamId,
+          shiftTypeId: existing.shiftTypeId,
+          startDate: existing.startDate,
+          endDate: existing.endDate,
+          recurrenceType: existing.recurrenceType,
+          interval: existing.interval,
+          daysOfWeek: existing.daysOfWeek,
+          isActive: existing.isActive,
+        },
+        after: {
+          targetType: updatedPattern.targetType,
+          userId: updatedPattern.userId,
+          teamId: updatedPattern.teamId,
+          shiftTypeId: updatedPattern.shiftTypeId,
+          startDate: updatedPattern.startDate,
+          endDate: updatedPattern.endDate,
+          recurrenceType: updatedPattern.recurrenceType,
+          interval: updatedPattern.interval,
+          daysOfWeek: updatedPattern.daysOfWeek,
+          isActive: updatedPattern.isActive,
+        },
+      },
+    });
+    return updatedPattern;
   }
 
-  async remove(companyId: string, patternId: string) {
+  async remove(
+    companyId: string,
+    currentUserId: string,
+    patternId: string,
+  ) {
     const existing = await this.prisma.shiftPattern.findFirst({
       where: {
         id: patternId,
@@ -550,6 +647,23 @@ export class ShiftPatternsService {
     await this.prisma.shiftPattern.delete({
       where: {
         id: patternId,
+      },
+    });
+
+    await this.auditService.log({
+      companyId,
+      userId: currentUserId,
+      action: 'SHIFT_PATTERN_DELETED',
+      entityType: 'ShiftPattern',
+      entityId: patternId,
+      metadata: {
+        targetType: existing.targetType,
+        userId: existing.userId,
+        teamId: existing.teamId,
+        shiftTypeId: existing.shiftTypeId,
+        recurrenceType: existing.recurrenceType,
+        startDate: existing.startDate,
+        endDate: existing.endDate,
       },
     });
 
