@@ -124,11 +124,7 @@ export class AuthService {
       accessToken: token,
       user: {
         id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
         companyId: user.companyId,
-        companyName: user.company.name,
         role: user.role.name,
       },
     };

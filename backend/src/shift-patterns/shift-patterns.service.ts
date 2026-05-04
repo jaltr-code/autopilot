@@ -671,4 +671,62 @@ export class ShiftPatternsService {
       message: 'Shift pattern deleted successfully',
     };
   }
+
+  async removeGeneratedShifts(
+  companyId: string,
+  currentUserId: string,
+  patternId: string,
+) {
+  const pattern = await this.prisma.shiftPattern.findFirst({
+    where: {
+      id: patternId,
+      companyId,
+    },
+  });
+
+  if (!pattern) {
+    throw new NotFoundException('Shift pattern not found');
+  }
+
+  const now = new Date();
+
+  const shiftsToRemove = await this.prisma.shift.findMany({
+    where: {
+      companyId,
+      sourcePatternId: patternId,
+      startDateTime: {
+        gte: now,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (shiftsToRemove.length > 0) {
+    await this.prisma.shift.deleteMany({
+      where: {
+        id: {
+          in: shiftsToRemove.map((shift) => shift.id),
+        },
+      },
+    });
+  }
+
+  await this.auditService.log({
+    companyId,
+    userId: currentUserId,
+    action: 'GENERATED_SHIFTS_REMOVED',
+    entityType: 'ShiftPattern',
+    entityId: patternId,
+    metadata: {
+      removedCount: shiftsToRemove.length,
+    },
+  });
+
+  return {
+    message: 'Generated future shifts removed successfully',
+    removedCount: shiftsToRemove.length,
+  };
+  }
 }

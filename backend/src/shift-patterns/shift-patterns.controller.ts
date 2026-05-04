@@ -73,4 +73,13 @@ export class ShiftPatternsController {
       id,
     );
   }
+
+  @Delete(':id/generated-shifts')
+  removeGeneratedShifts(@Param('id') id: string, @Req() req: any) {
+  return this.shiftPatternsService.removeGeneratedShifts(
+    req.user.companyId,
+    req.user.sub,
+    id,
+  );
+}
 }
